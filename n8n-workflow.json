@@ -1,0 +1,109 @@
+{
+  "name": "Ad Creative Optimizer (Facebook + Google Ads -> Webhook)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manualTrigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [260, 200]
+    },
+    {
+      "parameters": {
+        "resource": "ad",
+        "operation": "getAll",
+        "returnAll": true,
+        "additionalFields": {
+          "fields": "id,name,creative{body,title,object_story_spec}",
+          "datePreset": "last_30d"
+        }
+      },
+      "id": "facebookAds",
+      "name": "Facebook Ads",
+      "type": "n8n-nodes-base.facebook",
+      "typeVersion": 3,
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Facebook Credentials"
+        }
+      },
+      "position": [460, 120]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "resource": "report",
+        "returnAll": true,
+        "additionalFields": {
+          "query": "SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, metrics.impressions, metrics.clicks, metrics.ctr, metrics.average_cpc, metrics.conversions FROM ad_group_ad WHERE segments.date DURING LAST_30_DAYS"
+        }
+      },
+      "id": "googleAds",
+      "name": "Google Ads",
+      "type": "n8n-nodes-base.googleAds",
+      "typeVersion": 2,
+      "credentials": {
+        "googleAdsOAuth2Api": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Google Ads OAuth2"
+        }
+      },
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "mode": "mergeByIndex"
+      },
+      "id": "merge",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [680, 210]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Map to creativeMetrics\nconst fb = items.filter(i => i.json.source === 'facebook' || i.json.id || i.json.name);\nconst ga = items.filter(i => i.json['ad_group_ad.ad.id'] || i.json.metrics);\nfunction toNum(x){ const n = Number(x); return isNaN(n) ? 0 : n; }\nconst mapped = [];\nfor (const it of fb){\n  const j = it.json;\n  mapped.push({ json: { id: j.id, headline: j.creative?.title, primaryText: j.creative?.body, impressions: toNum(j.insights?.impressions), clicks: toNum(j.insights?.clicks), ctr: toNum(j.insights?.ctr)/100, cpc: toNum(j.insights?.cpc), conversions: 0, cta: '' } });\n}\nfor (const it of ga){\n  const j = it.json;\n  mapped.push({ json: { id: j['ad_group_ad.ad.id'], headline: j['ad_group_ad.ad.name'], primaryText: '', impressions: toNum(j.metrics?.impressions), clicks: toNum(j.metrics?.clicks), ctr: toNum(j.metrics?.ctr), cpc: toNum(j.metrics?.average_cpc), conversions: toNum(j.metrics?.conversions), cta: '' } });\n}\nreturn mapped;"
+      },
+      "id": "transform",
+      "name": "Transform to creativeMetrics",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [900, 210]
+    },
+    {
+      "parameters": {
+        "authentication": "none",
+        "requestMethod": "POST",
+        "url": "https://agentic-395c079f.vercel.app/api/webhook",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "={\n  \"source\": \"custom\",\n  \"brand\": { \"name\": \"{{$json.brandName || 'My Brand'}}\", \"voice\": \"{{$json.brandVoice || ''}}\", \"audience\": \"{{$json.audience || ''}}\", \"product\": \"{{$json.product || ''}}\" },\n  \"numVariants\": 3,\n  \"creativeMetrics\": {{ $json }}\n}"
+      },
+      "id": "httpRequest",
+      "name": "HTTP Request -> Optimizer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1120, 210]
+    },
+    {
+      "parameters": {
+        "functionCode": "return items;"
+      },
+      "id": "return",
+      "name": "Return",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [1340, 210]
+    }
+  ],
+  "connections": {
+    "manualTrigger": { "main": [ [ { "node": "Facebook Ads", "type": "main", "index": 0 }, { "node": "Google Ads", "type": "main", "index": 0 } ] ] },
+    "Facebook Ads": { "main": [ [ { "node": "Merge", "type": "main", "index": 0 } ] ] },
+    "Google Ads": { "main": [ [ { "node": "Merge", "type": "main", "index": 1 } ] ] },
+    "Merge": { "main": [ [ { "node": "Transform to creativeMetrics", "type": "main", "index": 0 } ] ] },
+    "Transform to creativeMetrics": { "main": [ [ { "node": "HTTP Request -> Optimizer", "type": "main", "index": 0 } ] ] },
+    "HTTP Request -> Optimizer": { "main": [ [ { "node": "Return", "type": "main", "index": 0 } ] ] }
+  }
+}

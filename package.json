@@ -1,0 +1,13 @@
+{
+  "name": "ad-creative-optimizer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "vercel dev",
+    "deploy": "vercel deploy --prod --yes --name agentic-395c079f"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
